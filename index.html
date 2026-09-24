@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Accuracy Gold</title>
+<link rel="manifest" href="manifest.json"><meta name="theme-color" content="#090c0f">
+<style>
+:root{--bg:#090c0f;--mint:#19e68c;--red:#d92b3a;--blue:#2f6bdc;--hdr:#1d3fa6;--slate:#2b313b;--ink:#e9edf2;--mute:#8b95a3}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+.top{padding:10px 12px 4px}
+h1{margin:0;font-size:22px;font-weight:800}h1 b{color:#f0b90b}
+#px{font-size:13px;color:var(--mute)}
+.bar{display:flex;gap:6px;padding:4px 12px;overflow-x:auto}
+.bar button,.set input,#ai{background:var(--slate);color:var(--ink);border:0;border-radius:6px;padding:7px 11px;font-size:13px}
+.bar button.on{background:var(--blue)}
+canvas{width:100%;height:58vh;min-height:320px;display:block}
+.set{display:flex;gap:8px;padding:6px 12px;flex-wrap:wrap;color:var(--mute);font-size:12px;align-items:center}
+.set input{width:54px}
+.panel{margin:8px 12px;border:1px solid #3a4250}
+.panel div{text-align:center;padding:8px 4px}
+.h{background:var(--hdr);font-weight:700;letter-spacing:.5px}
+.t{background:var(--blue);font-weight:700;font-size:16px}
+.m{background:#2a2f3a;font-size:12px}
+.mt{background:var(--hdr);font-size:12px;font-weight:600}
+.cells{display:grid;grid-template-columns:repeat(9,1fr);padding:0!important}
+.cells span{padding:8px 0;text-align:center;border:1px solid #3a4250;background:#2a2f3a;font-size:12px}
+.cells i{display:block;font-style:normal;font-size:15px;margin-top:2px}
+.u{color:#5b9bff}.d{color:#ff4d4d}
+.box{margin:8px 12px;padding:10px;background:#141a21;border-radius:8px;font-size:13px}
+.box h2{margin:0 0 6px;font-size:15px}
+table{width:100%;border-collapse:collapse}td,th{padding:4px;text-align:center;border-bottom:1px solid #26303a}
+#err{color:#ff8b8b;padding:0 12px;font-size:13px}
+footer{text-align:center;color:var(--mute);font-size:12px;padding:16px}
+</style></head><body>
+<div class="top"><h1>Accuracy <b>Gold</b></h1><div id="px">Loading XAUUSD…</div></div>
+<div class="bar" id="bar"></div>
+<canvas id="c"></canvas>
+<div class="set">EMA guide <input id="g" type="number" value="23"> Separation <input id="s" type="number" value="1"> Grid spacing $<input id="sp" type="number" value="10"> Levels <input id="nl" type="number" value="8"></div>
+<div id="err"></div>
+<div class="panel"><div class="h">ACCURACY GOLD TREND ALGO</div><div class="t" id="tr">…</div><div class="m" id="mtf">MAIN TIME FRAME</div><div class="mt">MULTI TIME FRAME TREND</div><div class="cells" id="cells"></div></div>
+<div class="box"><h2>Buy grid</h2><div id="grid">Waiting for a signal.</div></div>
+<div class="box"><h2>Second opinion</h2><button id="ai">Ask AI (checks gold news online)</button><div id="aiout" style="margin-top:8px;color:var(--mute)"></div></div>
+<footer>Analysis only, not financial advice · Cratto Ctrl</footer>
+<script>
+const $=id=>document.getElementById(id);
+const TF=[['1M','1m'],['3M','3m'],['5M','5m'],['15M','15m'],['30M','30m'],['1H','1h'],['4H','4h'],['1D','1d'],['1W','1w']];
+const MAINS=['1m','3m','5m','15m','30m','1h'];
+const dp=()=>window.DPF?window.DPF():2;
+const D={};let main='15m',last=null,busy=false,notified='';
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const ema=(a,n)=>{const k=2/(n+1),r=[a[0]];for(let i=1;i<a.length;i++)r.push(a[i]*k+r[i-1]*(1-k));return r};
+function bands(cs,g,s){const h=cs.map(x=>(x.h+x.l+x.c)/3),E=[0,1,2,3,4].map(j=>ema(h,g+j*s));
+return{E,top:h.map((_,i)=>Math.max(...E.map(e=>e[i]))),bot:h.map((_,i)=>Math.min(...E.map(e=>e[i]))),gd:ema(cs.map(x=>x.c),g)}}
+function signals(cs,B){const out=[];let pend=null;
+for(let i=13;i<cs.length;i++){
+if(cs[i].c>B.top[i]&&cs[i-1].c<=B.top[i-1]){let L=-1e9;for(let k=i-12;k<i;k++)L=Math.max(L,cs[k].h);out.push({i,t:'B',p:cs[i].c,time:cs[i].t});pend={L,from:i,broke:false};continue}
+if(pend){if(i-pend.from>40||cs[i].c<B.bot[i]){pend=null;continue}
+if(!pend.broke&&cs[i].c>pend.L)pend.broke=true;
+else if(pend.broke&&cs[i].l<=pend.L+1&&cs[i].c>pend.L){out.push({i,t:'S',p:cs[i].c,time:cs[i].t,L:pend.L});pend=null}}}
+return out}
+const agg=(cs,f)=>{const r=[];for(let i=cs.length%f;i+f<=cs.length;i+=f){const s=cs.slice(i,i+f);r.push({t:s[0].t,o:s[0].o,c:s[f-1].c,h:Math.max(...s.map(x=>x.h)),l:Math.min(...s.map(x=>x.l))})}return r};
+const get=k=>k=='3m'?(D['1m']?agg(D['1m'],3):null):D[k];
+async function load(k){const src=k=='3m'?'1m':k;if(D[src]&&Date.now()-D[src].ts<({'30m':3e5,'1h':6e5,'4h':9e5,'1d':9e5,'1w':9e5}[src]||50000))return;
+const r=await fetch('/api/candles?i='+src+'&s='+encodeURIComponent(window.SYM||'XAU/USD')),j=await r.json();if(!r.ok)throw new Error(j.error);j.ts=Date.now();D[src]=j}
+function trend(k){const cs=get(k);if(!cs||cs.length<40)return null;const g=+$('g').value||23,s=+$('s').value||1,B=bands(cs,g,s),i=cs.length-1;return cs[i].c>=(B.top[i]+B.bot[i])/2}
+function draw(){
+const cs=get(main);if(!cs)return;
+const g=+$('g').value||23,s=+$('s').value||1,sp=window.spx?spx(cs):(+$('sp').value||10),nl=+$('nl').value||8;
+const B=bands(cs,g,s),S=window.filt?filt(signals(cs,B)):signals(cs,B),N=cs.length,W=Math.min(110,N),st=N-W;
+const cv=$('c'),dpr=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;cv.width=w*dpr;cv.height=h*dpr;
+const x=cv.getContext('2d');x.scale(dpr,dpr);
+last=S.length?S[S.length-1]:null;
+const lots=last?(last.t=='S'?.07:.01):0,lv=last?Array.from({length:nl},(_,k)=>last.p-sp*(k+1)):[];
+let mn=1e9,mx=-1e9;for(let i=st;i<N;i++){mn=Math.min(mn,cs[i].l,B.bot[i]);mx=Math.max(mx,cs[i].h,B.top[i])}
+const pd=(mx-mn)*.08;mn-=pd;mx+=pd;
+const pw=58,cw=(w-pw)/W,Y=v=>h-(v-mn)/(mx-mn)*(h-24)-12,X=i=>(i-st+.5)*cw;
+const col=i=>cs[i].c>B.top[i]?[25,230,140]:cs[i].c<B.bot[i]?[217,43,58]:[120,130,150];
+for(let i=st;i<N-1;i++){const c=col(i);x.fillStyle=`rgba(${c},.30)`;x.beginPath();x.moveTo(X(i),Y(B.top[i]));x.lineTo(X(i+1),Y(B.top[i+1]));x.lineTo(X(i+1),Y(B.bot[i+1]));x.lineTo(X(i),Y(B.bot[i]));x.fill()}
+const lc=col(N-1);x.lineWidth=1;
+B.E.forEach(e=>{x.strokeStyle=`rgba(${lc},.9)`;x.beginPath();for(let i=st;i<N;i++)i==st?x.moveTo(X(i),Y(e[i])):x.lineTo(X(i),Y(e[i]));x.stroke()});
+x.strokeStyle='#fff';x.lineWidth=2;x.beginPath();for(let i=st;i<N;i++)i==st?x.moveTo(X(i),Y(B.gd[i])):x.lineTo(X(i),Y(B.gd[i]));x.stroke();
+// support / resistance: three nearest swing levels
+const piv=[];for(let i=st+3;i<N-3;i++){let hi=true,lo=true;for(let k=i-3;k<=i+3;k++){if(cs[k].h>cs[i].h)hi=false;if(cs[k].l<cs[i].l)lo=false}if(hi)piv.push(cs[i].h);if(lo)piv.push(cs[i].l)}
+const px=cs[N-1].c;piv.sort((a,b)=>Math.abs(a-px)-Math.abs(b-px)).slice(0,3).forEach(v=>{x.strokeStyle='#2f6bdc';x.lineWidth=2;x.beginPath();x.moveTo(0,Y(v));x.lineTo(w-pw,Y(v));x.stroke()});
+// buy grid
+x.font='bold 11px system-ui';x.lineWidth=1;lv.forEach(v=>{if(v>mn&&v<mx){x.setLineDash([5,4]);x.strokeStyle='#2e9e4f';x.beginPath();x.moveTo(0,Y(v));x.lineTo(w-pw,Y(v));x.stroke();x.setLineDash([]);x.fillStyle='#2e9e4f';x.fillText('buy '+lots.toFixed(2),4,Y(v)-3)}});
+// candles
+for(let i=st;i<N;i++){const k=cs[i],up=k.c>=k.o;x.strokeStyle=x.fillStyle=up?'#19e68c':'#e9edf2';x.lineWidth=1;x.beginPath();x.moveTo(X(i),Y(k.h));x.lineTo(X(i),Y(k.l));x.stroke();const t=Y(Math.max(k.o,k.c)),b=Y(Math.min(k.o,k.c));x.fillRect(X(i)-cw*.3,t,cw*.6,Math.max(1,b-t))}
+if(window.lines)lines(x,{cs,st,N,mn,mx,Y,X,w,h,pw,cw});
+// signal labels
+x.textAlign='center';S.forEach(m=>{if(m.i<st)return;const a=X(m.i),y=Y(cs[m.i].l);
+if(m.t=='B'){x.fillStyle='#19e68c';x.fillRect(a-17,y+8,34,17);x.fillStyle='#04140c';x.font='bold 11px system-ui';x.fillText('BUY',a,y+20)}
+else{x.strokeStyle='#fff';x.lineWidth=2;x.beginPath();x.moveTo(a-8,Y(m.p));x.lineTo(a+30,Y(m.p));x.stroke();x.fillStyle='#fff';x.font='11px system-ui';x.textAlign='left';x.fillText('Strong Buy',a+34,Y(m.p)+4);x.textAlign='center'}});
+x.textAlign='left';
+// axis
+x.fillStyle='#8b95a3';x.font='11px system-ui';for(let q=0;q<=5;q++){const v=mn+(mx-mn)*q/5;x.fillText(v.toFixed(dp()),w-pw+4,Y(v)+4)}
+x.fillStyle='#19e68c';x.fillRect(w-pw,Y(px)-9,pw,18);x.fillStyle='#04140c';x.font='bold 11px system-ui';x.fillText(px.toFixed(dp()),w-pw+4,Y(px)+4);
+const chg=px-cs[st].o;$('px').textContent=(window.SYMN||'Gold Spot / U.S. Dollar')+'  '+px.toFixed(dp())+'  '+(chg>=0?'+':'')+chg.toFixed(dp())+' ('+(chg/cs[st].o*100).toFixed(2)+'%)';
+const up=trend(main);$('tr').textContent=up==null?'…':up?'▲ BUY TREND':'▼ SELL TREND';$('mtf').textContent='MAIN TIME FRAME: '+main.replace('m','').replace('h','H');
+$('cells').innerHTML=TF.map(([l,k])=>{const t=trend(k);return`<span>${l}<i class="${t==null?'':t?'u':'d'}">${t==null?'·':t?'▲':'▼'}</i></span>`}).join('');
+$('grid').innerHTML=last?`<b>${last.t=='S'?'Strong Buy':'BUY'}</b> at ${last.p.toFixed(dp())} · ${last.time}<table><tr><th>Level</th><th>Price</th><th>Lots</th></tr>${lv.map((v,k)=>`<tr><td>${k+1}</td><td>${v.toFixed(dp())}</td><td>${lots.toFixed(2)}</td></tr>`).join('')}</table>Total ${(lots*nl).toFixed(2)} lots if every level fills`:'Waiting for a signal.';
+if(last&&last.i>=N-2&&notified!=last.time+last.t){notified=last.time+last.t;if(window.Notification&&Notification.permission=='granted')new Notification('Accuracy Gold: '+(last.t=='S'?'Strong Buy':'BUY')+' '+(window.SYM||'XAUUSD')+' '+last.p.toFixed(dp()))}window.after&&after({cs,B,S,sp,lots,lv,px})}
+async function refresh(){if(busy)return;busy=true;$('err').textContent='';
+try{await load(main);draw();for(const [,k] of TF){if(k==main||(k=='3m'&&main=='3m'))continue;try{await load(k);draw()}catch(e){$('err').textContent=e.message;await sleep(4000)}await sleep(1500)}}
+catch(e){$('err').textContent=e.message}busy=false}
+$('bar').innerHTML=MAINS.map(k=>`<button data-k="${k}" class="${k==main?'on':''}">${k.toUpperCase()}</button>`).join('');
+$('bar').onclick=async e=>{const k=e.target.dataset.k;if(!k)return;main=k;[...$('bar').children].forEach(b=>b.classList.toggle('on',b.dataset.k==k));try{await load(k);draw()}catch(er){$('err').textContent=er.message}};
+['g','s','sp','nl'].forEach(id=>$(id).oninput=draw);addEventListener('resize',draw);
+$('ai').onclick=async()=>{if(window.Notification&&Notification.permission=='default')Notification.requestPermission();$('aiout').textContent='Checking…';
+const body={pair:'XAUUSD',mainTimeframe:main,trend:$('tr').textContent,latestSignal:last&&{type:last.t=='S'?'Strong Buy':'BUY',price:last.p,time:last.time},timeframes:Object.fromEntries(TF.map(([l,k])=>[l,trend(k)==null?'n/a':trend(k)?'up':'down']))};
+try{const r=await fetch('/api/ai',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}),j=await r.json();$('aiout').textContent=j.text||j.error}catch(e){$('aiout').textContent=e.message}};
+refresh();setInterval(refresh,60000);
+</script>
+<script src="extras.js"></script></body></html>
