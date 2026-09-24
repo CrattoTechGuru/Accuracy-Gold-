@@ -39,8 +39,7 @@ footer{text-align:center;color:var(--mute);font-size:12px;padding:16px}
 <div id="err"></div>
 <div class="panel"><div class="h">ACCURACY GOLD TREND ALGO</div><div class="t" id="tr">…</div><div class="m" id="mtf">MAIN TIME FRAME</div><div class="mt">MULTI TIME FRAME TREND</div><div class="cells" id="cells"></div></div>
 <div class="box"><h2>Buy grid</h2><div id="grid">Waiting for a signal.</div></div>
-<div class="box"><h2>Second opinion</h2><button id="ai">Ask AI (checks gold news online)</button><div id="aiout" style="margin-top:8px;color:var(--mute)"></div></div>
-<footer>Analysis only, not financial advice · Cratto Ctrl</footer>
+<footer>Analysis only, not financial advice<br><b style="color:#e9edf2;font-size:14px">Cratto Ctrl</b></footer>
 <script>
 const $=id=>document.getElementById(id);
 const TF=[['1M','1m'],['3M','3m'],['5M','5m'],['15M','15m'],['30M','30m'],['1H','1h'],['4H','4h'],['1D','1d'],['1W','1w']];
@@ -106,9 +105,7 @@ catch(e){$('err').textContent=e.message}busy=false}
 $('bar').innerHTML=MAINS.map(k=>`<button data-k="${k}" class="${k==main?'on':''}">${k.toUpperCase()}</button>`).join('');
 $('bar').onclick=async e=>{const k=e.target.dataset.k;if(!k)return;main=k;[...$('bar').children].forEach(b=>b.classList.toggle('on',b.dataset.k==k));try{await load(k);draw()}catch(er){$('err').textContent=er.message}};
 ['g','s','sp','nl'].forEach(id=>$(id).oninput=draw);addEventListener('resize',draw);
-$('ai').onclick=async()=>{if(window.Notification&&Notification.permission=='default')Notification.requestPermission();$('aiout').textContent='Checking…';
-const body={pair:'XAUUSD',mainTimeframe:main,trend:$('tr').textContent,latestSignal:last&&{type:last.t=='S'?'Strong Buy':'BUY',price:last.p,time:last.time},timeframes:Object.fromEntries(TF.map(([l,k])=>[l,trend(k)==null?'n/a':trend(k)?'up':'down']))};
-try{const r=await fetch('/api/ai',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}),j=await r.json();$('aiout').textContent=j.text||j.error}catch(e){$('aiout').textContent=e.message}};
+document.body.addEventListener('click',()=>{if(window.Notification&&Notification.permission=='default')Notification.requestPermission()},{once:true});
 refresh();setInterval(refresh,60000);
 </script>
 <script src="extras.js"></script></body></html>

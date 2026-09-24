@@ -1,9 +1,11 @@
 const express = require('express');
 const app = express();
 app.use(express.json());
-app.use(express.static('public'));
+const path = require('path');
+['index.html', 'extras.js', 'manifest.json', 'sw.js', 'icon.svg'].forEach(f => app.get('/' + f, (q, r) => r.sendFile(path.join(__dirname, f))));
+app.get('/', (q, r) => r.sendFile(path.join(__dirname, 'index.html')));
 
-const TD = process.env.TWELVE_DATA_KEY, AK = process.env.ANTHROPIC_API_KEY;
+const TD = process.env.TWELVE_DATA_KEY;
 const TT = process.env.TELEGRAM_TOKEN, TC = process.env.TELEGRAM_CHAT_ID;
 const WP = process.env.WHATSAPP_PHONE, WK = process.env.CALLMEBOT_KEY;
 const RK = process.env.RESEND_API_KEY, ET = process.env.ALERT_EMAIL_TO;
@@ -44,34 +46,6 @@ app.get('/api/volume', async (req, res) => {
     const d = { source: px === sym ? sym : px + ' ETF (proxy)', v };
     cache[key] = { t: Date.now(), d };
     res.json(d);
-  } catch (e) { res.status(502).json({ error: e.message }); }
-});
-
-const PROMPTS = {
-  opinion: 'You are a gold (XAUUSD) analyst inside an analysis-only tool. Search the web for current gold news and analyst views, compare them with the technical readout you are given, say where they agree or conflict, and what could invalidate the setup. No trade instructions. Under 120 words.',
-  briefing: 'Write a daily gold briefing for an analysis-only tool. Search the web for: gold price action today, the US dollar index (DXY), US 10-year and real yields, Fed rate expectations, and any central-bank or geopolitical driver. Plain bullets, under 150 words.',
-  calendar: 'Search the web for the next 7 days of high-impact economic events that move gold (CPI, NFP, FOMC, PCE, Fed speakers). List date and time in UTC, the event, and why it matters to gold. Under 150 words.',
-  explain: 'Explain in plain words why the latest signal fired given the readout, what a Strong Buy retest means, and what would cancel the setup. No trade instructions. Under 100 words.'
-};
-
-app.post('/api/ai', async (req, res) => {
-  if (!AK) return res.status(500).json({ error: 'Add ANTHROPIC_API_KEY in Replit Secrets' });
-  const { mode = 'opinion', ...readout } = req.body || {};
-  try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': AK, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: process.env.AI_MODEL || 'claude-sonnet-5',
-        max_tokens: 1000,
-        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
-        system: PROMPTS[mode] || PROMPTS.opinion,
-        messages: [{ role: 'user', content: JSON.stringify(readout) }]
-      })
-    });
-    const j = await r.json();
-    const text = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-    res.json({ text: text || (j.error && j.error.message) || 'No answer' });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
